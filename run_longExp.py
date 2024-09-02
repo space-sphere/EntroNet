@@ -56,7 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('--res_attention', type=int, default=0)
     parser.add_argument('--stride', type=int or list, default=[6], help='stride length')
     parser.add_argument('--patch_len', type=int or list, default=[12], help='patch length')
-    parser.add_argument('--d_model', type=int, default=64, help='dimension of model')
+    parser.add_argument('--d_model', type=int, default=128, help='dimension of model')
     parser.add_argument('--dropout', type=float, default=0.3, help='dropout')
 
     
@@ -67,8 +67,9 @@ if __name__ == '__main__':
     # parser.add_argument('--d_forward', type=int, default=128, help='d_model for getting time dim attn')
     # parser.add_argument('--d_entro', type=int, default=128, help='')
     parser.add_argument('--nvars', type=int, default=21, help='')
+    parser.add_argument('--use_fast', type=int, default=1, help="whether to use fast-te: 0 or 1")
     # mutual info
-    parser.add_argument('--d_mutual', type=int, default=512, help='hidden size of ffn in CausalGraphNN')
+    parser.add_argument('--d_mutual', type=int, default=256, help='hidden size of ffn in CausalGraphNN')
     parser.add_argument('--mutual_type', type=str, default='2dMixer', help='method to aggregate info in graph')
     parser.add_argument('--mutual_individual', type=int, default=0)
     # parser.add_argument('--kernel_sizes', type=list, default=[1, 3])
@@ -81,7 +82,7 @@ if __name__ == '__main__':
     # parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
     parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
     # parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
-    parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn')
+    parser.add_argument('--d_ff', type=int, default=256, help='dimension of fcn')
     parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
     parser.add_argument('--factor', type=int, default=1, help='attn factor')
     parser.add_argument('--distil', action='store_false',

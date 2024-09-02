@@ -19,7 +19,7 @@ class SingleTe(nn.Module):
                  mutual_type='linear', mutual_individual=False,                                # mutual info
                  activation='gelu', res_attention=False, e_layers=1, lag=1, model_order=1,
                  head_individual=False, target_window=None,
-                 padding_patch='start', revin=False, affine=False, subtract_last=False, pe="zeros", learn_pe=True,
+                 padding_patch='start', revin=False, affine=False, subtract_last=False, pe="zeros", learn_pe=True, fast=True, 
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.res_attention = res_attention
@@ -57,7 +57,7 @@ class SingleTe(nn.Module):
         self.encoder = EntropyEncoder(
             d_entro=d_entro, n_heads=n_heads, d_forward=d_forward, d_mutual=d_mutual, patch_len=patch_len, patch_num=patch_num,
             n_heads_forward=n_heads_forward, nvars=nvars, dropout=dropout, d_ff=d_ff, store_attn=store_attn, mutual_type=mutual_type,
-            mutual_individual=mutual_individual, activation=activation, res_attention=res_attention, e_layers=e_layers, lag=lag, model_order=model_order
+            mutual_individual=mutual_individual, activation=activation, res_attention=res_attention, e_layers=e_layers, lag=lag, model_order=model_order, fast=fast
         )
         
         # Decoder
@@ -153,7 +153,7 @@ class EntropyEncoder(nn.Module):
     def __init__(self, d_entro, n_heads, d_forward, d_mutual, patch_len, patch_num, n_heads_forward, nvars, 
                  dropout=None, d_ff=256, store_attn=False, 
                  mutual_type='linear', mutual_individual=False,                                # mutual info
-                 activation='gelu', res_attention=False, e_layers=1, lag=1, model_order=1, *args, **kwargs) -> None:
+                 activation='gelu', res_attention=False, e_layers=1, lag=1, model_order=1, fast=False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         
         self.res_attention = res_attention
@@ -164,7 +164,7 @@ class EntropyEncoder(nn.Module):
             layer = EntropyEncoderLayer(d_forward, d_entro, n_heads, d_mutual, patch_num, n_heads_forward, nvars, 
                  dropout=dropout, d_ff=d_ff, store_attn=store_attn, 
                  mutual_type=mutual_type, mutual_individual=mutual_individual,                                # mutual info
-                 activation=activation, res_attention=res_attention, lag=lag, model_order=model_order)
+                 activation=activation, res_attention=res_attention, lag=lag, model_order=model_order, fast=fast)
             
             self.entropy_layers.append(layer)
     
@@ -188,7 +188,7 @@ class EntropyEncoderLayer(nn.Module):
     def __init__(self, d_forward, d_entro, n_heads, d_mutual, patch_num, n_heads_forward, nvars,
                  dropout=None, d_ff=256, store_attn=False,
                  mutual_type='linear', mutual_individual=False,                                # mutual info
-                 activation='gelu', res_attention=False, lag=1, model_order=1,
+                 activation='gelu', res_attention=False, lag=1, model_order=1, fast=False, 
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.res_attention = res_attention
@@ -196,6 +196,7 @@ class EntropyEncoderLayer(nn.Module):
         # Generating Entropy Graph
         self.graph = EntropyGraph(d_forward=d_forward, n_hiddens=d_entro, n_heads=n_heads_forward, dropout=dropout, lag=lag, model_order=model_order)
         self.entropy_dropout = nn.Dropout(dropout)
+        self.fast = fast
         
         # # CI Values
         # self.image = CrossTimeMIP(d_forward, patch_num, n_heads_forward, d_ff=d_ff, store_attn=store_attn,
@@ -222,7 +223,7 @@ class EntropyEncoderLayer(nn.Module):
     def forward(self, z):                                             # [bs, nvars, patch_num, d_forward]
         # Generating Entropy Graph
         bs, nvars, patch_num, d_forward = z.shape
-        entropy_scores = self.graph(z, z).view(bs, -1, nvars, nvars)                    # [bs, n_heads, nvars_q, nvars_v]
+        entropy_scores = self.graph(z, z, fast=self.fast).view(bs, -1, nvars, nvars)                    # [bs, n_heads, nvars_q, nvars_v]
         entropy_weights = self.entropy_dropout(F.softmax(entropy_scores, dim=-1))
 
         # # CI in Attention Each Var
@@ -264,52 +265,11 @@ class CausalGraphNN(nn.Module):
         
         if type == 'gin':
             
-            # self.gnn = Gin(patch_num, n_heads, d_forward, d_mutual, dropout, activation, nvars, individual)
-            if not individual:
-                self.gnn = nn.Sequential(
-                    nn.Linear((d_forward // n_heads) * patch_num, d_mutual),
-                    get_activation_fn(activation),
-                    nn.Dropout(dropout),
-                    nn.Linear(d_mutual, (d_forward // n_heads) * patch_num)
-                )
-                
-            else:
-                self.gnns = nn.ModuleList()
-                for i in range(nvars):
-                    gin = nn.Sequential(
-                        nn.Linear((d_forward // n_heads) * patch_num, d_mutual),
-                        get_activation_fn(activation),
-                        nn.Dropout(dropout),
-                        nn.Linear(d_mutual, (d_forward // n_heads) * patch_num)
-                    )
-                    self.gnns.append(gin)
+            self.gnn = Gin(patch_num, n_heads, d_forward, d_mutual, dropout, activation, nvars, individual)
             
         elif type == '2dMixer':
 
             self.gnn = TwodMixer(patch_num, n_heads, d_forward, d_mutual, dropout, activation, nvars, individual)
-            # if not individual:
-            #     self.cross_sect = nn.Linear(d_forward // n_heads, d_forward // n_heads)
-            #     self.cross_time = nn.Sequential(
-            #         nn.Linear(patch_num, d_mutual),
-            #         get_activation_fn(activation),
-            #         nn.Dropout(dropout),
-            #         nn.Linear(d_mutual, patch_num)
-            #     )
-            
-            # else:
-            #     self.cross_sect = nn.ModuleList()
-            #     self.cross_time = nn.ModuleList()
-            #     for i in range(nvars):
-            #         cross_sect = nn.Linear(d_forward // n_heads, d_forward // n_heads)
-            #         cross_time = nn.Sequential(
-            #             nn.Linear(patch_num, d_mutual),
-            #             get_activation_fn(activation),
-            #             nn.Dropout(dropout),
-            #             nn.Linear(d_mutual, patch_num)
-            #         )
-                    
-            #         self.cross_sect.append(cross_sect)
-            #         self.cross_time.append(cross_time)
         
         self.output_linear = nn.Linear(d_forward, d_forward)
         
@@ -327,29 +287,6 @@ class CausalGraphNN(nn.Module):
         bs, nvars, patch_num, d_forward = z.shape
         
         """use gnn to aggregate information"""
-        # if self.type == 'gin':
-        #     if not self.individual:
-        #         # out = self.cross_sect(z.view(bs, nvars, patch_num, self.n_heads, -1)).permute(0, 3, 1, 4, 2)    # [bs, n_heads, nvars, d / h, patch_num]
-        #         # out = self.cross_time(out)                                                                      # [bs, n_heads, nvars, d / h, patch_num]
-        #         out = z.view(bs, nvars, patch_num, self.n_heads, -1).permute(0, 3, 1, 4, 2).flatten(-2)         # [bs, n_heads, nvars, d / h * patch_num]
-        #         out = self.gnn(out)
-            
-        #     # else:  # TODO 还没实现
-        #     #     out = []
-        #     #     for i in range(nvars):
-        #     #         u = z[:, i]                                                                                 # [bs, patch_num, d_forward]
-        #     #         u = self.cross_sect[i](u.view(bs, patch_num, self.n_heads, -1)).permute(0, 2, 3, 1)         # [bs, heads, d / h, patch_nu]
-        #     #         u = self.cross_time[i](u)                                                                   # [bs, heads, d / h, patch_nu]
-        #     #         out.append(u)
-        #     #     out = torch.stack(out, dim=2)                                                                   # [bs, n_heads, nvars, d / h, patch_num]
-        #     # out = out.permute(0, 1, 2, 4, 3)                                                                    # [bs, n_heads, nvars, patch_num, d / h]
-            
-        #     # Mutual Info
-        #     # out = torch.matmul(self.dropout_entropy(entropy), out.reshape(bs, self.n_heads, nvars, -1))         # [bs, n_heads, nvars, p * d / h]
-        #     out = torch.matmul(self.dropout_entropy(entropy), out)         # [bs, n_heads, nvars, p * d / h]
-        #     out = out.view(bs, self.n_heads, nvars, patch_num, d_forward // self.n_heads)
-        #     out = out.permute(0, 2, 3, 1, 4).reshape(bs, nvars, patch_num, -1)                                  # [bs, nvars, patch_num, d_forward]
-
         out = self.gnn(z, entropy)
         # out = out + values
         out = self.output_linear(out)
@@ -370,12 +307,12 @@ class EntropyGraph(nn.Module):
         
         self.dropout = nn.Dropout(dropout)
     
-    def forward(self, queries, keys, eps=1e-6):                                      # [bs, nvars, patch_num, d_forward]
+    def forward(self, queries, keys, eps=1e-6, fast=False):                                      # [bs, nvars, patch_num, d_forward]
         
         qt = transpose(self.Wq(queries), self.n_heads)                               # [bs * heads, nvars, d_model / heads, patch_num]
         kt = transpose(self.Wk(keys), self.n_heads)                                  # [bs * heads, nvars, d_model / heads, patch_num]
         
-        entropy = entro(qt, kt, eps, self.lag, self.model_order)                     # [bs * heads, nvars_q, nvars_k] TE_k->q
+        entropy = entro(qt, kt, eps, self.lag, self.model_order, fast)                     # [bs * heads, nvars_q, nvars_k] TE_k->q
         
         # indices = torch.arange(queries.shape[1], device=queries.device).view(-1, 1)
         # entropy[:, indices, indices] = -np.inf

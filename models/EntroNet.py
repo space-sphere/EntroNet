@@ -1,9 +1,6 @@
 import torch
 import torch.nn as nn
-from layers.TEformer_layer import SingleTe
-
-from layers.RevIN import RevIN
-from layers.Entropy_layers import series_decomp
+from layers.EntroNet_layer import SingleTe
 
 class Model(nn.Module):
     def __init__(self, configs) -> None:
@@ -32,6 +29,7 @@ class Model(nn.Module):
         # Encoder
         lag = configs.lag
         model_order = configs.model_order
+        fast = bool(configs.use_fast), 
         # d_entro = configs.d_entro
         n_heads = configs.n_heads
 
@@ -75,7 +73,7 @@ class Model(nn.Module):
                 n_heads_forward=n_heads_forward, nvars=nvars, dropout=dropout, d_ff=d_ff, store_attn=store_attn, stride=stride, mutual_type=mutual_type,
                 mutual_individual=mutual_individual, activation=activation, res_attention=res_attention, e_layers=e_layers,lag=lag,
                 model_order=model_order, head_individual=individual, target_window=target_window,
-                padding_patch=padding_patch, revin=revin, affine=affine, subtract_last=subtract_last
+                padding_patch=padding_patch, revin=revin, affine=affine, subtract_last=subtract_last, fast=fast, 
             )
             self.model.append(model)
     

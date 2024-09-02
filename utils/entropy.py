@@ -129,7 +129,7 @@ def entro(queries, keys, eps=0, lag=1, model_order=1, fast=False):
         batch_size, feature_num, d, T = queries.shape  # [batch_size, feature_num, time]
         bk, feature_num_k, d_k, Tk = keys.shape
 
-        if not fast:
+        if fast:
             lag = d
             queries, keys = queries.permute(0, 1, 3, 2), keys.permute(0, 1, 3, 2)
             # [bs, nvars, 1, t]
