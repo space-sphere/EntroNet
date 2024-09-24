@@ -126,51 +126,51 @@ def torch_det(x):
     return torch.abs(torch.det(x))  # TODO remove
 
 def entro(queries, keys, eps=0, lag=1, model_order=1, fast=False):
-        batch_size, feature_num, d, T = queries.shape  # [batch_size, feature_num, time]
-        bk, feature_num_k, d_k, Tk = keys.shape
+    batch_size, feature_num, d, T = queries.shape  # [batch_size, feature_num, time]
+    bk, feature_num_k, d_k, Tk = keys.shape
 
-        if fast:
-            lag = d
-            queries, keys = queries.permute(0, 1, 3, 2), keys.permute(0, 1, 3, 2)
-            # [bs, nvars, 1, t]
-            queries, keys = queries.reshape(batch_size, feature_num, 1, -1), keys.reshape(bk, feature_num_k, 1, -1)
-            # queries = remove_trend(queries)
-            # keys = remove_trend(keys)
-            T = d * T
-            Tk = d_k * Tk
-            d = d_k = 1
+    if fast:
+        lag = d
+        queries, keys = queries.permute(0, 1, 3, 2), keys.permute(0, 1, 3, 2)
+        # [bs, nvars, 1, t]
+        queries, keys = queries.reshape(batch_size, feature_num, 1, -1), keys.reshape(bk, feature_num_k, 1, -1)
+        # queries = remove_trend(queries)
+        # keys = remove_trend(keys)
+        T = d * T
+        Tk = d_k * Tk
+        d = d_k = 1
 
-        queries = standardize(time_series_difference_with_repeat(queries))
-        keys = standardize(time_series_difference_with_repeat(keys))
-        assert batch_size == bk and T == Tk and d == d_k
-        device = queries.device
+    queries = standardize(time_series_difference_with_repeat(queries))
+    keys = standardize(time_series_difference_with_repeat(keys))
+    assert batch_size == bk and T == Tk and d == d_k
+    device = queries.device
+    
+    '''using self_cov to get the covariance'''
+    embed_queries = embed_data(queries, lag=lag, order=model_order + 1, device=device).reshape(batch_size, feature_num, (model_order + 1) * d, -1)  # [b, feature, (model_order(时间步) + 1) * d, Nv]
+    embed_keys = embed_data(keys, lag=lag, order=model_order + 1, device=keys.device)[:, :, :-1, :, :].reshape(
+        batch_size, feature_num_k, model_order * d, -1)
+    # [b, feature_k, model_order * d, Nv]
+    covariance = self_cov(torch.concat([embed_queries.reshape(batch_size, -1, T - (model_order ) *lag), 
+                                    embed_keys.reshape(batch_size, -1, T - (model_order) *lag)], dim=1), device=device)
+    
+    
+    '''get cov in the shape of [b, f, f] and [b, f]'''
+    cov_XtYt = cov(covariance, feature_num_queries=feature_num, feature_num_keys=feature_num_k, d=d, order=model_order+1, num_matrix=1, device=device)  # [b, f, f, 2* m, 2 * m]
+    cov_YYt = cov(covariance, feature_num_queries=feature_num, order=model_order+1, d=d, num_matrix=2, device=device)  # [b, f, m+1, m+1]
+    cov_YYtXt = cov(covariance, feature_num_queries=feature_num, feature_num_keys=feature_num_k, order=model_order+1, d=d, num_matrix=3, device=device)  # [b, f, f, (2m + 1), (2m + 1)]
+    cov_Yt = cov(covariance, feature_num_queries=feature_num, order=model_order+1, d=d, num_matrix=4, device=device)  # [b, f, 1]
+    '''computing det'''
+    H_XtYt = torch_det(cov_XtYt.reshape(-1, 2 * model_order * d, 2 * model_order * d)).reshape(batch_size, feature_num, feature_num_k)
+    H_YYt = torch_det(cov_YYt.reshape(-1, (model_order + 1) *d, (model_order + 1) * d)).reshape(batch_size, feature_num, 1)
+    H_YYtXt = torch_det(cov_YYtXt.reshape(-1, 2 * d * model_order + d, 2 * d * model_order + d)).reshape(batch_size, feature_num, feature_num_k)
+    H_Yt = torch_det(cov_Yt.reshape(-1, model_order * d, model_order * d)).reshape(batch_size, feature_num, 1)
         
-        '''using self_cov to get the covariance'''
-        embed_queries = embed_data(queries, lag=lag, order=model_order + 1, device=device).reshape(batch_size, feature_num, (model_order + 1) * d, -1)  # [b, feature, (model_order(时间步) + 1) * d, Nv]
-        embed_keys = embed_data(keys, lag=lag, order=model_order + 1, device=keys.device)[:, :, :-1, :, :].reshape(
-            batch_size, feature_num_k, model_order * d, -1)
-        # [b, feature_k, model_order * d, Nv]
-        covariance = self_cov(torch.concat([embed_queries.reshape(batch_size, -1, T - (model_order ) *lag), 
-                                        embed_keys.reshape(batch_size, -1, T - (model_order) *lag)], dim=1), device=device)
-        
-        
-        '''get cov in the shape of [b, f, f] and [b, f]'''
-        cov_XtYt = cov(covariance, feature_num_queries=feature_num, feature_num_keys=feature_num_k, d=d, order=model_order+1, num_matrix=1, device=device)  # [b, f, f, 2* m, 2 * m]
-        cov_YYt = cov(covariance, feature_num_queries=feature_num, order=model_order+1, d=d, num_matrix=2, device=device)  # [b, f, m+1, m+1]
-        cov_YYtXt = cov(covariance, feature_num_queries=feature_num, feature_num_keys=feature_num_k, order=model_order+1, d=d, num_matrix=3, device=device)  # [b, f, f, (2m + 1), (2m + 1)]
-        cov_Yt = cov(covariance, feature_num_queries=feature_num, order=model_order+1, d=d, num_matrix=4, device=device)  # [b, f, 1]
-        '''computing det'''
-        H_XtYt = torch_det(cov_XtYt.reshape(-1, 2 * model_order * d, 2 * model_order * d)).reshape(batch_size, feature_num, feature_num_k)
-        H_YYt = torch_det(cov_YYt.reshape(-1, (model_order + 1) *d, (model_order + 1) * d)).reshape(batch_size, feature_num, 1)
-        H_YYtXt = torch_det(cov_YYtXt.reshape(-1, 2 * d * model_order + d, 2 * d * model_order + d)).reshape(batch_size, feature_num, feature_num_k)
-        H_Yt = torch_det(cov_Yt.reshape(-1, model_order * d, model_order * d)).reshape(batch_size, feature_num, 1)
-            
-        # pte = 0.5 * torch.log((H_XtYt * H_YYt + eps) / (H_YYtXt * H_Yt + eps) + eps)
-        # pte = 0.5 * (torch.log(H_XtYt / (H_YYtXt + eps) + eps) + torch.log(H_YYt / (H_Yt + eps) + eps))
-        pte = 0.5 * (torch.log(H_XtYt / (H_YYtXt + eps) + 1) - torch.log(H_Yt / (H_YYt + eps) + 1))
-        # pte = torch.where(torch.isnan(pte), torch.zeros_like(pte), pte)
-        
-        return pte  # [b, y, x] Tx->y
+    # pte = 0.5 * torch.log((H_XtYt * H_YYt + eps) / (H_YYtXt * H_Yt + eps) + eps)
+    # pte = 0.5 * (torch.log(H_XtYt / (H_YYtXt + eps) + eps) + torch.log(H_YYt / (H_Yt + eps) + eps))
+    pte = 0.5 * (torch.log(H_XtYt / (H_YYtXt + eps) + 1) - torch.log(H_Yt / (H_YYt + eps) + 1))
+    # pte = torch.where(torch.isnan(pte), torch.zeros_like(pte), pte)
+    
+    return pte  # [b, y, x] Tx->y
 
 def transpose(X, n_heads):                                          # [batch_size, nvars, patch_num, d_model]
     # [b, f, t, d]
@@ -184,6 +184,29 @@ def transpose_output(X, n_heads):
     X = X.reshape(-1, n_heads, dshape[1], dshape[2], dshape[3])           # [b, h, f, d / h, t]
     # [b, f, h, d / h, t]
     return X.permute(0, 2, 4,1, 3).reshape(-1, dshape[1], dshape[3], n_heads * dshape[2])  # [b, f, t, d]
+
+def attention(queries, keys, fast=False):
+    batch_size, feature_num, d, T = queries.shape
+    bk, feature_num_k, d_k, Tk = keys.shape
+
+    queries, keys = queries.permute(0, 1, 3, 2), keys.permute(0, 1, 3, 2)
+    # [bs, nvars, t]
+    queries, keys = queries.reshape(batch_size, feature_num, -1), keys.reshape(bk, feature_num_k, -1)
+
+    keys = keys.permute(0, 2, 1)                                                                    # [bs, t, nvars]
+    attention = torch.matmul(queries, keys)                                                         # [bs, nvars, nvars]
+
+    return attention
+
+    # if fast:
+    #     queries, keys = queries.permute(0, 1, 3, 2), keys.permute(0, 1, 3, 2)
+    #     # [bs, nvars, t]
+    #     queries, keys = queries.reshape(batch_size, feature_num, -1), keys.reshape(bk, feature_num_k, -1)
+
+    # assert batch_size == bk and T == Tk and d == d_k
+    # device = queries.device
+
+
 
 class TransferEntropy(nn.Module):
     def __init__(self, mask_flag=False, dropout=0.1, lag=1, model_order=1, output_attention=False, n_vars=None, *args, **kwargs) -> None:

@@ -9,6 +9,8 @@ data/*
 
 test_results/*
 
+checkpoints/*
+
 results/*
 
 *.ipynb
@@ -31,4 +33,8 @@ data
 
 res/*
 
+*.out
+
 res
+
+*.ipynb

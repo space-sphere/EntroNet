@@ -4,7 +4,7 @@ import numpy as np
 from typing import Optional
 import torch.nn.functional as F
 from torch import Tensor
-from utils.entropy import entro, transpose 
+from utils.entropy import entro, transpose, attention
 from layers.RevIN import RevIN
 from layers.Entropy_layers import get_activation_fn, positional_encoding
 from layers.graph_layer import TwodMixer, Gin
@@ -19,45 +19,50 @@ class SingleTe(nn.Module):
                  mutual_type='linear', mutual_individual=False,                                # mutual info
                  activation='gelu', res_attention=False, e_layers=1, lag=1, model_order=1,
                  head_individual=False, target_window=None,
-                 padding_patch='start', revin=False, affine=False, subtract_last=False, pe="zeros", learn_pe=True, fast=True, 
-                 *args, **kwargs) -> None:
+                 padding_patch='start', revin=False, affine=False, subtract_last=False, pe="zeros", learn_pe=True, fast=True, use_entropy=False,
+                 type='Patch', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.revin = revin
         self.res_attention = res_attention
-        self.padding_patch = padding_patch
-        self.patch_len = patch_len
-        self.stride = stride
         
         # Revin Layer
         if revin:
             self.revin = revin
             self.revin_layer = RevIN(nvars, affine=affine, subtract_last=subtract_last)
         
-        # Embedding: Patching & Projection
-        ## Patch
-        if self.padding_patch == 'start':
-            self.padding_patch_layer = nn.ReplicationPad1d((stride, 0)) 
-            patch_num += 1
-        elif self.padding_patch == 'end':
-            self.padding_patch_layer = nn.ReplicationPad1d((0, stride)) 
-            patch_num += 1
+        # # Embedding: Patching & Projection
+        # ## Patch
+        # if self.padding_patch == 'start':
+        #     self.padding_patch_layer = nn.ReplicationPad1d((stride, 0)) 
+        #     patch_num += 1
+        # elif self.padding_patch == 'end':
+        #     self.padding_patch_layer = nn.ReplicationPad1d((0, stride)) 
+        #     patch_num += 1
             
-        self.patch_num = patch_num
+        # self.patch_num = patch_num
+        # head_nf = patch_num * d_forward
+
+        # ## Projection
+        # self.Wp = nn.Linear(patch_len, d_forward)
+        # self.Wpos = positional_encoding(pe, learn_pe, patch_num, d_forward)
+        # self.dropout = nn.Dropout(dropout)
+
+        # # Sequence Enhancer
+        # self.se = SequenceEnhancer(d_forward, patch_num, n_heads, d_ff=d_ff, store_attn=store_attn,
+        #                           attn_dropout=dropout, dropout=dropout, activation=activation, res_attention=res_attention)
+
+        self.embedding = Embedding(patch_len, patch_num, stride, d_forward, n_heads=n_heads, d_ff=d_ff, store_attn=store_attn, 
+                                   attn_dropout=dropout, dropout=dropout, activation=activation, res_attention=res_attention, 
+                                   type=type, padding_patch=padding_patch, pe=pe, learn_pe=learn_pe, *args, **kwargs)
+        
+        patch_num += padding_patch is not None
         head_nf = patch_num * d_forward
-
-        ## Projection
-        self.Wp = nn.Linear(patch_len, d_forward)
-        self.Wpos = positional_encoding(pe, learn_pe, patch_num, d_forward)
-        self.dropout = nn.Dropout(dropout)
-
-        # Sequence Enhancer
-        self.se = SequenceEnhancer(d_forward, patch_num, n_heads, d_ff=d_ff, store_attn=store_attn,
-                                  attn_dropout=dropout, dropout=dropout, activation=activation, res_attention=res_attention)
         
         # Encoder
         self.encoder = EntropyEncoder(
             d_entro=d_entro, n_heads=n_heads, d_forward=d_forward, d_mutual=d_mutual, patch_len=patch_len, patch_num=patch_num,
             n_heads_forward=n_heads_forward, nvars=nvars, dropout=dropout, d_ff=d_ff, store_attn=store_attn, mutual_type=mutual_type,
-            mutual_individual=mutual_individual, activation=activation, res_attention=res_attention, e_layers=e_layers, lag=lag, model_order=model_order, fast=fast
+            mutual_individual=mutual_individual, activation=activation, res_attention=res_attention, e_layers=e_layers, lag=lag, model_order=model_order, fast=fast, use_entropy=use_entropy
         )
         
         # Decoder
@@ -73,18 +78,19 @@ class SingleTe(nn.Module):
             z = self.revin_layer(z, 'norm')
             z = z.permute(0,2,1)                                                            # [bs x nvars x seq_len]
         
-        ## Patching
-        if self.padding_patch != None:
-            z = self.padding_patch_layer(z)
-        z = z.unfold(dimension=-1, size=self.patch_len, step=self.stride)                   # z: [bs x nvars x patch_num x patch_len]
-        z = z[:, :, -self.patch_num:, :]
+        # ## Patching
+        # if self.padding_patch != None:
+        #     z = self.padding_patch_layer(z)
+        # z = z.unfold(dimension=-1, size=self.patch_len, step=self.stride)                   # z: [bs x nvars x patch_num x patch_len]
+        # z = z[:, :, -self.patch_num:, :]
         
-        ## Projection & Positional Encoding
-        z = self.Wp(z)                                                                      # [bs x nvars x patch_num x d_forward]
-        z = self.dropout(z + self.Wpos)
+        # ## Projection & Positional Encoding
+        # z = self.Wp(z)                                                                      # [bs x nvars x patch_num x d_forward]
+        # z = self.dropout(z + self.Wpos)
 
-        # Enhancing Sequence
-        z = self.se(z)                                                                      # [bs x nvars x patch_num x d_forward]
+        # # Enhancing Sequence
+        # z = self.se(z)                                                                      # [bs x nvars x patch_num x d_forward]
+        z = self.embedding(z)
 
         # Encoder
         if self.res_attention:
@@ -104,7 +110,51 @@ class SingleTe(nn.Module):
             return z, attn_scores, entropy_scores
         else:
             return z
+
+class Embedding(nn.Module):
+    def __init__(self, patch_len, patch_num, stride, d_forward, n_heads=8, d_ff=512, store_attn=False, attn_dropout=False, 
+                 dropout=0.2, activation='gelu', res_attention=False, type='Patch', padding_patch='start', pe='zeros', learn_pe=True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.padding_patch = padding_patch
+        self.patch_len = patch_len
+        self.stride = stride
+        self.type = type
+
+        if type == 'Patch':
+            # Padding
+            if self.padding_patch == 'start':
+                self.padding_patch_layer = nn.ReplicationPad1d((stride, 0)) 
+                patch_num += 1
+            elif self.padding_patch == 'end':
+                self.padding_patch_layer = nn.ReplicationPad1d((0, stride)) 
+                patch_num += 1
+            self.patch_num = patch_num
+
+            # Projection
+            self.Wp = nn.Linear(patch_len, d_forward)
+            self.Wpos = positional_encoding(pe, learn_pe, patch_num, d_forward)
+            self.dropout = nn.Dropout(dropout)
+
+        # Sequence Enghancer
+        self.se = SequenceEnhancer(d_forward, patch_num, n_heads, d_ff=d_ff, store_attn=store_attn,
+                                  attn_dropout=dropout, dropout=dropout, activation=activation, res_attention=res_attention)
+
+    def forward(self, z):                                                                   # [bs, nvars, seq_len]
+        if self.type == 'Patch':
+            # Patching
+            if self.padding_patch is not None:
+                z = self.padding_patch_layer(z)
+            z = z.unfold(dimension=-1, size=self.patch_len, step=self.stride)               # z: [bs x nvars x patch_num x patch_len]
+            z = z[:, :, -self.patch_num:, :]
         
+            # Projection & Positional Encoding
+            z = self.Wp(z)                                                                  # [bs x nvars x patch_num x d_forward]
+            z = self.dropout(z + self.Wpos)
+
+        # Enhancing Sequence
+        z = self.se(z)                                                                      # [bs x nvars x patch_num x d_forward]
+
+        return z
 
 class EntropyDecoder(nn.Module):
     def __init__(self, individual, nvars, head_nf, target_window, head_dropout=0, *args, **kwargs) -> None:
@@ -153,7 +203,7 @@ class EntropyEncoder(nn.Module):
     def __init__(self, d_entro, n_heads, d_forward, d_mutual, patch_len, patch_num, n_heads_forward, nvars, 
                  dropout=None, d_ff=256, store_attn=False, 
                  mutual_type='linear', mutual_individual=False,                                # mutual info
-                 activation='gelu', res_attention=False, e_layers=1, lag=1, model_order=1, fast=False, *args, **kwargs) -> None:
+                 activation='gelu', res_attention=False, e_layers=1, lag=1, model_order=1, fast=False, use_entropy=False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         
         self.res_attention = res_attention
@@ -164,7 +214,7 @@ class EntropyEncoder(nn.Module):
             layer = EntropyEncoderLayer(d_forward, d_entro, n_heads, d_mutual, patch_num, n_heads_forward, nvars, 
                  dropout=dropout, d_ff=d_ff, store_attn=store_attn, 
                  mutual_type=mutual_type, mutual_individual=mutual_individual,                                # mutual info
-                 activation=activation, res_attention=res_attention, lag=lag, model_order=model_order, fast=fast)
+                 activation=activation, res_attention=res_attention, lag=lag, model_order=model_order, fast=fast, use_entropy=use_entropy)
             
             self.entropy_layers.append(layer)
     
@@ -188,15 +238,22 @@ class EntropyEncoderLayer(nn.Module):
     def __init__(self, d_forward, d_entro, n_heads, d_mutual, patch_num, n_heads_forward, nvars,
                  dropout=None, d_ff=256, store_attn=False,
                  mutual_type='linear', mutual_individual=False,                                # mutual info
-                 activation='gelu', res_attention=False, lag=1, model_order=1, fast=False, 
+                 activation='gelu', res_attention=False, lag=1, model_order=1, fast=False, use_entropy=False,
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.res_attention = res_attention
 
         # Generating Entropy Graph
-        self.graph = EntropyGraph(d_forward=d_forward, n_hiddens=d_entro, n_heads=n_heads_forward, dropout=dropout, lag=lag, model_order=model_order)
-        self.entropy_dropout = nn.Dropout(dropout)
-        self.fast = fast
+        
+        if use_entropy:
+            self.graph = EntropyGraph(d_forward=d_forward, n_hiddens=d_entro, n_heads=n_heads_forward, dropout=dropout, lag=lag, model_order=model_order)
+            self.entropy_dropout = nn.Dropout(dropout)
+            self.fast = fast
+        
+        else:
+            self.graph = AttentionGraph(d_forward=d_forward, n_hiddens=d_entro, n_heads=n_heads_forward, dropout=dropout)
+            self.entropy_dropout = nn.Dropout(dropout)
+            self.fast = fast
         
         # # CI Values
         # self.image = CrossTimeMIP(d_forward, patch_num, n_heads_forward, d_ff=d_ff, store_attn=store_attn,
@@ -307,17 +364,37 @@ class EntropyGraph(nn.Module):
         
         self.dropout = nn.Dropout(dropout)
     
-    def forward(self, queries, keys, eps=1e-6, fast=False):                                      # [bs, nvars, patch_num, d_forward]
+    def forward(self, queries, keys, eps=1e-6, fast=False):                                     # [bs, nvars, patch_num, d_forward]
         
-        qt = transpose(self.Wq(queries), self.n_heads)                               # [bs * heads, nvars, d_model / heads, patch_num]
-        kt = transpose(self.Wk(keys), self.n_heads)                                  # [bs * heads, nvars, d_model / heads, patch_num]
+        qt = transpose(self.Wq(queries), self.n_heads)                                          # [bs * heads, nvars, d_model / heads, patch_num]
+        kt = transpose(self.Wk(keys), self.n_heads)                                             # [bs * heads, nvars, d_model / heads, patch_num]
         
-        entropy = entro(qt, kt, eps, self.lag, self.model_order, fast)                     # [bs * heads, nvars_q, nvars_k] TE_k->q
+        entropy = entro(qt, kt, eps, self.lag, self.model_order, fast)                          # [bs * heads, nvars_q, nvars_k] TE_k->q
         
         # indices = torch.arange(queries.shape[1], device=queries.device).view(-1, 1)
         # entropy[:, indices, indices] = -np.inf
         
         return entropy
+
+class AttentionGraph(nn.Module):
+    def __init__(self, d_forward, n_hiddens, n_heads, d_keys=None, dropout=0.1):
+        super().__init__()
+        self.n_heads = n_heads
+        d_keys = n_hiddens // n_heads
+
+        self.Wq = nn.Linear(d_forward, d_keys * n_heads)
+        self.Wk = nn.Linear(d_forward, d_keys * n_heads)
+
+        self.dropout = nn.Dropout(dropout)
+    
+    def forward(self, queries, keys, fast=False):
+        qt = transpose(self.Wq(queries), self.n_heads)                                          # [bs x heads, nvars, d_model / heads, patch_num]
+        kt = transpose(self.Wk(keys), self.n_heads)                                             # [bs x heads, nvars, d_model / heads, patch_num]
+
+        attn = attention(qt, kt)                                                                # [bs * heads, nvars_q, nvars_k]
+
+        return attn
+
 
 class SequenceEnhancer(nn.Module):
     def __init__(self, d_forward, patch_num, n_heads, d_k=None, d_v=None, d_ff=256, store_attn=False,
@@ -358,7 +435,7 @@ class SequenceEnhancer(nn.Module):
         
 class AttentionLayer(nn.Module):
     def __init__(self, d_model, n_heads, d_k=None, d_v=None, d_ff=256, store_attn=False,
-                 attn_dropout=0, dropout=0., activation="gelu", res_attention=False):
+                 attn_dropout=0, dropout=0., activation="gelu", res_attention=False, use_ff=True):
         super().__init__()
         assert not d_model % n_heads, f"d_model ({d_model}) must be divisible by n_heads ({n_heads})"
         d_k = d_model // n_heads
@@ -372,15 +449,17 @@ class AttentionLayer(nn.Module):
         self.dropout_attn = nn.Dropout(dropout)
         self.norm_attn = nn.LayerNorm(d_model)
 
-        ## Position-wise Feed-Forward
-        # self.ff = nn.Sequential(nn.Linear(d_model, d_ff),
-        #                         get_activation_fn(activation),
-        #                         nn.Dropout(dropout),
-        #                         nn.Linear(d_ff, d_model))
+        self.use_ff = use_ff
+        if use_ff:
+            # Position-wise Feed-Forward
+            self.ff = nn.Sequential(nn.Linear(d_model, d_ff),
+                                    get_activation_fn(activation),
+                                    nn.Dropout(dropout),
+                                    nn.Linear(d_ff, d_model))
 
-        # # Add & Norm
-        # self.dropout_ffn = nn.Dropout(dropout)
-        # self.norm_ffn = nn.LayerNorm(d_model)
+            # Add & Norm
+            self.dropout_ffn = nn.Dropout(dropout)
+            self.norm_ffn = nn.LayerNorm(d_model)
 
         self.store_attn = store_attn
 
@@ -403,12 +482,13 @@ class AttentionLayer(nn.Module):
 
         # Feed-forward sublayer
         
-        ## Position-wise Feed-Forward
-        # src2 = self.ff(src)
-        
-        ## Add & Norm
-        # src = src + self.dropout_ffn(src2)  # Add: residual connection with residual dropout
-        # src = self.norm_ffn(src)
+        if self.use_ff:
+            # Position-wise Feed-Forward
+            src2 = self.ff(src)
+            
+            # Add & Norm
+            src = src + self.dropout_ffn(src2)  # Add: residual connection with residual dropout
+            src = self.norm_ffn(src)
         
         if self.res_attention:
             return src, scores

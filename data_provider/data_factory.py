@@ -20,6 +20,7 @@ data_dict = {
     'UEA': UEAloader,
     'Solar': Dataset_Solar,
     'PEMS': Dataset_PEMS,
+    'Exchange': Dataset_Custom,
     'finance': Dataset_Finance,
 }
 

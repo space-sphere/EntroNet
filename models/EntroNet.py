@@ -48,6 +48,8 @@ class Model(nn.Module):
         res_attention = configs.res_attention
         e_layers = configs.e_layers
         
+        use_entropy = bool(configs.use_entropy)
+        
         self.lenth = len(patch_len_list)
         # self.stride = stride
         self.res_attention = res_attention
@@ -73,7 +75,7 @@ class Model(nn.Module):
                 n_heads_forward=n_heads_forward, nvars=nvars, dropout=dropout, d_ff=d_ff, store_attn=store_attn, stride=stride, mutual_type=mutual_type,
                 mutual_individual=mutual_individual, activation=activation, res_attention=res_attention, e_layers=e_layers,lag=lag,
                 model_order=model_order, head_individual=individual, target_window=target_window,
-                padding_patch=padding_patch, revin=revin, affine=affine, subtract_last=subtract_last, fast=fast, 
+                padding_patch=padding_patch, revin=revin, affine=affine, subtract_last=subtract_last, fast=fast, use_entropy=use_entropy
             )
             self.model.append(model)
     

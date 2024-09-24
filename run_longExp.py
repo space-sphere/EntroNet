@@ -18,9 +18,9 @@ if __name__ == '__main__':
                         help='model name, options: [Autoformer, Informer, Transformer]')
 
     # data loader
-    parser.add_argument('--data', type=str, required=False, default='ETTh1', help='dataset type')
+    parser.add_argument('--data', type=str, required=False, default='ETTh2', help='dataset type')
     parser.add_argument('--root_path', type=str, default='../data/ETT/', help='root path of the data file')
-    parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
+    parser.add_argument('--data_path', type=str, default='ETTh2.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
@@ -54,8 +54,8 @@ if __name__ == '__main__':
     parser.add_argument('--lag', type=int, default=1, help='time lag for getting pseudo entropy')
     parser.add_argument('--model_order', type=int, default=1, help='how many past time-series used to get pseudo entropy')
     parser.add_argument('--res_attention', type=int, default=0)
-    parser.add_argument('--stride', type=int or list, default=[6], help='stride length')
-    parser.add_argument('--patch_len', type=int or list, default=[12], help='patch length')
+    parser.add_argument('--stride', type=int or list, default=6, help='stride length')
+    parser.add_argument('--patch_len', type=int or list, default=12, help='patch length')
     parser.add_argument('--d_model', type=int, default=128, help='dimension of model')
     parser.add_argument('--dropout', type=float, default=0.3, help='dropout')
 
@@ -68,6 +68,7 @@ if __name__ == '__main__':
     # parser.add_argument('--d_entro', type=int, default=128, help='')
     parser.add_argument('--nvars', type=int, default=21, help='')
     parser.add_argument('--use_fast', type=int, default=1, help="whether to use fast-te: 0 or 1")
+    parser.add_argument('--use_entropy', type=int, default=1, help='use entropy to dig series relation or not')
     # mutual info
     parser.add_argument('--d_mutual', type=int, default=256, help='hidden size of ffn in CausalGraphNN')
     parser.add_argument('--mutual_type', type=str, default='2dMixer', help='method to aggregate info in graph')
@@ -81,8 +82,8 @@ if __name__ == '__main__':
     parser.add_argument('--c_out', type=int, default=7, help='output size')
     # parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
     parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
-    # parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
-    parser.add_argument('--d_ff', type=int, default=256, help='dimension of fcn')
+    parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
+    parser.add_argument('--d_ff', type=int, default=512, help='dimension of fcn')
     parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
     parser.add_argument('--factor', type=int, default=1, help='attn factor')
     parser.add_argument('--distil', action='store_false',
@@ -110,7 +111,7 @@ if __name__ == '__main__':
 
     # GPU
     parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
-    parser.add_argument('--gpu', type=int, default=0, help='gpu')
+    parser.add_argument('--gpu', type=int, default=1, help='gpu')
     parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
     parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
     parser.add_argument('--test_flop', action='store_true', default=False, help='See utils/tools for usage')
@@ -142,7 +143,7 @@ if __name__ == '__main__':
     if args.is_training:
         for ii in range(args.itr):
             # setting record of experiments
-            setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_df{}_fa{}_pa{}_{}'.format(
+            setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_df{}_dm{}_fa{}_pa{}_en{}_{}'.format(
                 args.model_id,
                 args.model,
                 args.data,
@@ -154,12 +155,14 @@ if __name__ == '__main__':
                 args.n_heads,
                 args.e_layers,
                 args.d_ff,
+                args.d_mutual,
                 args.fast, 
                 args.patch_len,
                 # args.factor,
                 # args.embed,
                 # args.distil,
                 # args.des,
+                args.use_entropy,
                 ii)
 
             exp = Exp(args)  # set experiments
@@ -176,7 +179,7 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
     else:
         ii = 0
-        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_df{}_pa{}_{}'.format(
+        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_df{}_dm{}_pa{}_{}'.format(
                 args.model_id,
                 args.model,
                 args.data,
@@ -188,6 +191,7 @@ if __name__ == '__main__':
                 args.n_heads,
                 args.e_layers,
                 args.d_ff,
+                args.d_mutual,
                 args.patch_len,
                 # args.factor,
                 # args.embed,
