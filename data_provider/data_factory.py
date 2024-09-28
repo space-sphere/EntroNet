@@ -21,6 +21,8 @@ data_dict = {
     'Solar': Dataset_Solar,
     'PEMS': Dataset_PEMS,
     'Exchange': Dataset_Custom,
+    'Electricity': Dataset_Custom,
+    'traffic': Dataset_Custom,
     'finance': Dataset_Finance,
 }
 

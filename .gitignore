@@ -38,3 +38,11 @@ res/*
 res
 
 *.ipynb
+
+scripts/*
+
+nohup.*
+
+*.sh
+
+*.log

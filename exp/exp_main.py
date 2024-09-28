@@ -49,11 +49,17 @@ class Exp_Main(Exp_Basic):
         return model_optim
 
     def _select_criterion(self):
-        criterion = nn.MSELoss()
+        if self.args.criterion == 'mae':
+            criterion = nn.L1Loss()
+        else:
+            if self.args.criterion != 'mse':
+                print("{} is not a applicable, default mse criterion will be used.".format(self.args.criterion))
+            criterion = nn.MSELoss()
         return criterion
 
     def vali(self, vali_data, vali_loader, criterion):
         total_loss = []
+        mse_loss = []
         self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):

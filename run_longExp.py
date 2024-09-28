@@ -18,9 +18,9 @@ if __name__ == '__main__':
                         help='model name, options: [Autoformer, Informer, Transformer]')
 
     # data loader
-    parser.add_argument('--data', type=str, required=False, default='ETTh2', help='dataset type')
+    parser.add_argument('--data', type=str, required=False, default='ETTh1', help='dataset type')
     parser.add_argument('--root_path', type=str, default='../data/ETT/', help='root path of the data file')
-    parser.add_argument('--data_path', type=str, default='ETTh2.csv', help='data file')
+    parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     parser.add_argument('--fc_dropout', type=float, default=0.1, help='fully connected dropout')
     parser.add_argument('--head_dropout', type=float, default=0.1, help='head dropout')
     # parser.add_argument('--stride', type=int, default=8, help='stride')
-    parser.add_argument('--padding_patch', default='start', help='None: None; end: padding on the end')
+    parser.add_argument('--padding_patch', default=None, help='None: None; start: padding at first;end: padding on the end;')
     parser.add_argument('--revin', type=int, default=1, help='RevIN; True 1 False 0')
     parser.add_argument('--affine', type=int, default=0, help='RevIN-affine; True 1 False 0')
     parser.add_argument('--subtract_last', type=int, default=0, help='0: subtract mean; 1: subtract last')
@@ -49,16 +49,18 @@ if __name__ == '__main__':
     parser.add_argument('--kernel_size', type=int, default=25, help='decomposition-kernel')
     parser.add_argument('--head_individual', type=int, default=0, help='individual head; True 1 False 0')
     
-    # TEformer
+    # EntroNet
     # entro
     parser.add_argument('--lag', type=int, default=1, help='time lag for getting pseudo entropy')
     parser.add_argument('--model_order', type=int, default=1, help='how many past time-series used to get pseudo entropy')
     parser.add_argument('--res_attention', type=int, default=0)
     parser.add_argument('--stride', type=int or list, default=6, help='stride length')
     parser.add_argument('--patch_len', type=int or list, default=12, help='patch length')
-    parser.add_argument('--d_model', type=int, default=128, help='dimension of model')
+    parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
     parser.add_argument('--dropout', type=float, default=0.3, help='dropout')
-
+    parser.add_argument('--use_se', type=bool, default=1, help='whether to use sequence enhancer')
+    parser.add_argument('--pre_embedding', type=bool, default=0, help='whether to embed series before patching')
+    parser.add_argument('--criterion', type=str, default='mse', help='which criterion to choose')
     
     # graph
     parser.add_argument('--n_heads', type=int, default=8, help='num of heads for enhancer')
@@ -80,7 +82,6 @@ if __name__ == '__main__':
     parser.add_argument('--enc_in', type=int, default=7, help='encoder input size') # DLinear with --individual, use this hyperparameter as the number of channels
     parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
     parser.add_argument('--c_out', type=int, default=7, help='output size')
-    # parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
     parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
     parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
     parser.add_argument('--d_ff', type=int, default=512, help='dimension of fcn')

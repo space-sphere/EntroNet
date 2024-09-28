@@ -14,46 +14,30 @@ from layers.Transformer_Layers import MultiheadAttention
 """
 
 class SingleTe(nn.Module):
-    def __init__(self, d_entro, n_heads, d_forward, d_mutual, patch_len, patch_num, n_heads_forward, nvars, 
+    def __init__(self, seq_len, n_heads, d_model, d_mutual, patch_len, patch_num, n_heads_forward, nvars, 
                  dropout=None, d_ff=256, store_attn=False, stride=1,
                  mutual_type='linear', mutual_individual=False,                                # mutual info
                  activation='gelu', res_attention=False, e_layers=1, lag=1, model_order=1,
                  head_individual=False, target_window=None,
-                 padding_patch='start', revin=False, affine=False, subtract_last=False, pe="zeros", learn_pe=True, fast=True, use_entropy=False,
-                 type='Patch', *args, **kwargs) -> None:
+                 padding_patch='start', revin=False, affine=False, subtract_last=False, pe="zeros", learn_pe=True,
+                 fast=True, use_entropy=False, pre_embedding=False, use_se=True, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.revin = revin
         self.res_attention = res_attention
+        if not pre_embedding:
+            d_forward = d_entro = d_model
         
+        else:
+            d_forward = d_entro = patch_len
+
         # Revin Layer
         if revin:
             self.revin = revin
             self.revin_layer = RevIN(nvars, affine=affine, subtract_last=subtract_last)
-        
-        # # Embedding: Patching & Projection
-        # ## Patch
-        # if self.padding_patch == 'start':
-        #     self.padding_patch_layer = nn.ReplicationPad1d((stride, 0)) 
-        #     patch_num += 1
-        # elif self.padding_patch == 'end':
-        #     self.padding_patch_layer = nn.ReplicationPad1d((0, stride)) 
-        #     patch_num += 1
-            
-        # self.patch_num = patch_num
-        # head_nf = patch_num * d_forward
 
-        # ## Projection
-        # self.Wp = nn.Linear(patch_len, d_forward)
-        # self.Wpos = positional_encoding(pe, learn_pe, patch_num, d_forward)
-        # self.dropout = nn.Dropout(dropout)
-
-        # # Sequence Enhancer
-        # self.se = SequenceEnhancer(d_forward, patch_num, n_heads, d_ff=d_ff, store_attn=store_attn,
-        #                           attn_dropout=dropout, dropout=dropout, activation=activation, res_attention=res_attention)
-
-        self.embedding = Embedding(patch_len, patch_num, stride, d_forward, n_heads=n_heads, d_ff=d_ff, store_attn=store_attn, 
+        self.embedding = Embedding(seq_len, patch_len, patch_num, stride, d_model, d_forward, n_heads=n_heads, d_ff=d_ff, store_attn=store_attn, 
                                    attn_dropout=dropout, dropout=dropout, activation=activation, res_attention=res_attention, 
-                                   type=type, padding_patch=padding_patch, pe=pe, learn_pe=learn_pe, *args, **kwargs)
+                                   pre_embedding=pre_embedding, padding_patch=padding_patch, pe=pe, learn_pe=learn_pe, use_se=use_se, *args, **kwargs)
         
         patch_num += padding_patch is not None
         head_nf = patch_num * d_forward
@@ -78,26 +62,13 @@ class SingleTe(nn.Module):
             z = self.revin_layer(z, 'norm')
             z = z.permute(0,2,1)                                                            # [bs x nvars x seq_len]
         
-        # ## Patching
-        # if self.padding_patch != None:
-        #     z = self.padding_patch_layer(z)
-        # z = z.unfold(dimension=-1, size=self.patch_len, step=self.stride)                   # z: [bs x nvars x patch_num x patch_len]
-        # z = z[:, :, -self.patch_num:, :]
-        
-        # ## Projection & Positional Encoding
-        # z = self.Wp(z)                                                                      # [bs x nvars x patch_num x d_forward]
-        # z = self.dropout(z + self.Wpos)
-
-        # # Enhancing Sequence
-        # z = self.se(z)                                                                      # [bs x nvars x patch_num x d_forward]
-        z = self.embedding(z)
+        z = self.embedding(z)                                                               # [bs x nvars x patch_num x d_forward]
 
         # Encoder
         if self.res_attention:
             z, attn_scores, entropy_scores = self.encoder(z)
         else:
             z = self.encoder(z)                                                             # [bs x nvars x patch_num x d_forward]
-            # pass
 
         # Decoder
         z = self.decoder(z)
@@ -112,49 +83,72 @@ class SingleTe(nn.Module):
             return z
 
 class Embedding(nn.Module):
-    def __init__(self, patch_len, patch_num, stride, d_forward, n_heads=8, d_ff=512, store_attn=False, attn_dropout=False, 
-                 dropout=0.2, activation='gelu', res_attention=False, type='Patch', padding_patch='start', pe='zeros', learn_pe=True, *args, **kwargs):
+    def __init__(self, seq_len, patch_len, patch_num, stride, d_model, d_forward, n_heads=8, d_ff=512, store_attn=False, attn_dropout=False, use_se=False,
+                 dropout=0.2, activation='gelu', res_attention=False, pre_embedding=False, padding_patch='start', pe='zeros', learn_pe=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.padding_patch = padding_patch
         self.patch_len = patch_len
         self.stride = stride
-        self.type = type
+        self.pre_embedding = pre_embedding
 
-        if type == 'Patch':
-            # Padding
-            if self.padding_patch == 'start':
-                self.padding_patch_layer = nn.ReplicationPad1d((stride, 0)) 
-                patch_num += 1
-            elif self.padding_patch == 'end':
-                self.padding_patch_layer = nn.ReplicationPad1d((0, stride)) 
-                patch_num += 1
-            self.patch_num = patch_num
+        # Padding
+        self.patch_layer = patch_layer(padding_patch, patch_len, stride)
+        if padding_patch is not None:
+            patch_num += 1
+        self.patch_num = patch_num
+
+        if not pre_embedding:
 
             # Projection
-            self.Wp = nn.Linear(patch_len, d_forward)
-            self.Wpos = positional_encoding(pe, learn_pe, patch_num, d_forward)
+            self.Wp = nn.Linear(patch_len, d_model)
+            self.Wpos = positional_encoding(pe, learn_pe, patch_num, d_model)
             self.dropout = nn.Dropout(dropout)
+        
+        else:
+            self.Wp = None
+            # self.Wp = nn.Linear(96, 512)
+            self.__value_embedding__(seq_len, d_model)  # self.Wp
 
         # Sequence Enghancer
-        self.se = SequenceEnhancer(d_forward, patch_num, n_heads, d_ff=d_ff, store_attn=store_attn,
-                                  attn_dropout=dropout, dropout=dropout, activation=activation, res_attention=res_attention)
+        self.use_se = use_se
+        if self.use_se:
+            self.se = SequenceEnhancer(d_forward, patch_num, n_heads, d_ff=d_ff, store_attn=store_attn,
+                                    attn_dropout=dropout, dropout=dropout, activation=activation, res_attention=res_attention)
 
     def forward(self, z):                                                                   # [bs, nvars, seq_len]
-        if self.type == 'Patch':
-            # Patching
-            if self.padding_patch is not None:
-                z = self.padding_patch_layer(z)
-            z = z.unfold(dimension=-1, size=self.patch_len, step=self.stride)               # z: [bs x nvars x patch_num x patch_len]
-            z = z[:, :, -self.patch_num:, :]
         
+        if not self.pre_embedding:
             # Projection & Positional Encoding
+            z = self.patch_layer(z)
+            z = z[:, :, -self.patch_num:]
             z = self.Wp(z)                                                                  # [bs x nvars x patch_num x d_forward]
             z = self.dropout(z + self.Wpos)
+        
+        else:
+            z = self.Wp(z)                                                                  # [bs x nvars x d_forward]
+            z = self.patch_layer(z)
+            z = z[:, :, -self.patch_num:]                                                   # [bs x nvars x patch_num x d_forward]
 
         # Enhancing Sequence
-        z = self.se(z)                                                                      # [bs x nvars x patch_num x d_forward]
+        if self.use_se:
+            z = self.se(z)                                                                  # [bs x nvars x patch_num x d_forward]
 
         return z
+    
+    def __value_embedding__(self, seq_len, d_model):
+        W = torch.empty(seq_len, d_model)
+        nn.init.kaiming_normal_(W)
+
+        seq_len
+        index = torch.arange(seq_len, dtype=torch.float32)
+        norms = W.norm(dim=0, keepdim=True)
+        result = torch.matmul(index, W / norms)
+        _, indices = torch.sort(result)
+
+        self.Wp = nn.Linear(seq_len, d_model)
+        with torch.no_grad():
+            self.Wp.weight.data = (W[:, indices]).T
+            self.Wp.bias.data = torch.zeros(d_model)
 
 class EntropyDecoder(nn.Module):
     def __init__(self, individual, nvars, head_nf, target_window, head_dropout=0, *args, **kwargs) -> None:
@@ -341,7 +335,7 @@ class CausalGraphNN(nn.Module):
         Returns:
             Tensor              :    [bs, nvars, patch_num, d_forward]
         """
-        bs, nvars, patch_num, d_forward = z.shape
+        # bs, nvars, patch_num, d_forward = z.shape
         
         """use gnn to aggregate information"""
         out = self.gnn(z, entropy)
@@ -435,7 +429,7 @@ class SequenceEnhancer(nn.Module):
         
 class AttentionLayer(nn.Module):
     def __init__(self, d_model, n_heads, d_k=None, d_v=None, d_ff=256, store_attn=False,
-                 attn_dropout=0, dropout=0., activation="gelu", res_attention=False, use_ff=True):
+                 attn_dropout=0, dropout=0., activation="gelu", res_attention=False, use_ff=False):  # TODO define use_ff
         super().__init__()
         assert not d_model % n_heads, f"d_model ({d_model}) must be divisible by n_heads ({n_heads})"
         d_k = d_model // n_heads
@@ -494,3 +488,32 @@ class AttentionLayer(nn.Module):
             return src, scores
         else:
             return src
+
+class patch_layer(nn.Module):
+    def __init__(self, padding_patch, patch_len, stride, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.padding_patch = padding_patch
+        self.stride = stride
+        self.patch_len = patch_len
+
+        if padding_patch is not None:
+            if padding_patch == 'start':
+                self.padding = nn.ReflectionPad1d((stride, 0))
+            elif padding_patch == 'end':
+                self.padding = nn.ReflectionPad1d((0, stride))
+            else:
+                raise ValueError('padding_patch should be in [\'start\', \'end\'], {} is not implemented'.format(padding_patch))
+
+    def forward(self, z: Tensor):
+        if self.padding_patch is not None:
+            z = self.padding(z)
+        
+        if self.padding_patch == 'end':
+            z = z.unfold(dimension=-1, size=self.patch_len, step=self.stride)
+
+        else:
+            z = z.flip(dims=[-1])
+            z = z.unfold(dimension=-1, size=self.patch_len, step=self.stride)
+            z = z.flip(dims=[-2, -1])
+        
+        return z
