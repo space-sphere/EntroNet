@@ -36,5 +36,5 @@ do
         --train_epochs 30 \
         --learning_rate 0.0005 \
         --patience 5 \
-        --itr 1
+        --itr 1 > res/longforecasting/$model_name'_ETTm2_'$pred_len'pl'.log
 done

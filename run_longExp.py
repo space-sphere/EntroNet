@@ -12,13 +12,13 @@ if __name__ == '__main__':
     parser.add_argument('--random_seed', type=int, default=2023, help='random seed')
 
     # basic config
-    parser.add_argument('--is_training', type=int, required=False, default=1, help='status')
-    parser.add_argument('--model_id', type=str, required=False, default='test', help='model id')
-    parser.add_argument('--model', type=str, required=False, default='EntroNet',
+    parser.add_argument('--is_training', type=int, required=True, default=1, help='status')
+    parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
+    parser.add_argument('--model', type=str, required=True, default='Autoformer',
                         help='model name, options: [Autoformer, Informer, Transformer]')
 
     # data loader
-    parser.add_argument('--data', type=str, required=False, default='ETTh1', help='dataset type')
+    parser.add_argument('--data', type=str, required=True, default='ETTh1', help='dataset type')
     parser.add_argument('--root_path', type=str, default='../data/ETT/', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
@@ -32,25 +32,8 @@ if __name__ == '__main__':
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
     parser.add_argument('--label_len', type=int, default=48, help='start token length')
     parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
-
-
-    # DLinear
-    #parser.add_argument('--individual', action='store_true', default=False, help='DLinear: a linear layer for each variate(channel) individually')
-
-    # PatchTST
-    parser.add_argument('--fc_dropout', type=float, default=0.1, help='fully connected dropout')
-    parser.add_argument('--head_dropout', type=float, default=0.1, help='head dropout')
-    # parser.add_argument('--stride', type=int, default=8, help='stride')
-    parser.add_argument('--padding_patch', default=None, help='None: None; start: padding at first;end: padding on the end;')
-    parser.add_argument('--revin', type=int, default=1, help='RevIN; True 1 False 0')
-    parser.add_argument('--affine', type=int, default=0, help='RevIN-affine; True 1 False 0')
-    parser.add_argument('--subtract_last', type=int, default=0, help='0: subtract mean; 1: subtract last')
-    parser.add_argument('--use_multiscale', type=int, default=0, help='decomposition; True 1 False 0')
-    parser.add_argument('--kernel_size', type=int, default=25, help='decomposition-kernel')
-    parser.add_argument('--head_individual', type=int, default=0, help='individual head; True 1 False 0')
     
     # EntroNet
-    # entro
     parser.add_argument('--lag', type=int, default=1, help='time lag for getting pseudo entropy')
     parser.add_argument('--model_order', type=int, default=1, help='how many past time-series used to get pseudo entropy')
     parser.add_argument('--res_attention', type=int, default=0)
@@ -61,21 +44,22 @@ if __name__ == '__main__':
     parser.add_argument('--use_se', type=bool, default=1, help='whether to use sequence enhancer')
     parser.add_argument('--pre_embedding', type=bool, default=0, help='whether to embed series before patching')
     parser.add_argument('--criterion', type=str, default='mse', help='which criterion to choose')
+    parser.add_argument('--affine', type=int, default=0, help='RevIN-affine; True 1 False 0')
+    parser.add_argument('--padding_patch', default=None, help='None: None; start: padding at first;end: padding on the end;')
+    parser.add_argument('--use_multiscale', type=int, default=0, help='decomposition; True 1 False 0')
+    parser.add_argument('--revin', type=int, default=1, help='RevIN; True 1 False 0')
     
     # graph
     parser.add_argument('--n_heads', type=int, default=8, help='num of heads for enhancer')
     parser.add_argument('--n_heads_forward', type=int, default=8, help='heads num for entropy graph')
-    parser.add_argument('--fast', help='whether to use fast ento', type=int, default=1)
-    # parser.add_argument('--d_forward', type=int, default=128, help='d_model for getting time dim attn')
-    # parser.add_argument('--d_entro', type=int, default=128, help='')
     parser.add_argument('--nvars', type=int, default=21, help='')
     parser.add_argument('--use_fast', type=int, default=1, help="whether to use fast-te: 0 or 1")
     parser.add_argument('--use_entropy', type=int, default=1, help='use entropy to dig series relation or not')
+    
     # mutual info
     parser.add_argument('--d_mutual', type=int, default=256, help='hidden size of ffn in CausalGraphNN')
     parser.add_argument('--mutual_type', type=str, default='2dMixer', help='method to aggregate info in graph')
     parser.add_argument('--mutual_individual', type=int, default=0)
-    # parser.add_argument('--kernel_sizes', type=list, default=[1, 3])
 
     # Formers 
     parser.add_argument('--embed_type', type=int, default=0, help='0: default 1: value embedding + temporal embedding + positional embedding 2: value embedding + temporal embedding 3: value embedding + positional embedding 4: value embedding')
@@ -90,7 +74,6 @@ if __name__ == '__main__':
     parser.add_argument('--distil', action='store_false',
                         help='whether to use distilling in encoder, using this argument means not using distilling',
                         default=True)
-    # parser.add_argument('--dropout', type=float, default=0.3, help='dropout')
     parser.add_argument('--embed', type=str, default='timeF',
                         help='time features encoding, options:[timeF, fixed, learned]')
     parser.add_argument('--activation', type=str, default='gelu', help='activation')
@@ -109,6 +92,13 @@ if __name__ == '__main__':
     parser.add_argument('--lradj', type=str, default='type3', help='adjust learning rate')
     parser.add_argument('--pct_start', type=float, default=0.3, help='pct_start')
     parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
+
+    # not used
+    parser.add_argument('--fc_dropout', type=float, default=0.1, help='fully connected dropout')
+    parser.add_argument('--head_dropout', type=float, default=0.1, help='head dropout')
+    parser.add_argument('--subtract_last', type=int, default=0, help='0: subtract mean; 1: subtract last')
+    parser.add_argument('--kernel_size', type=int, default=25, help='decomposition-kernel')
+    parser.add_argument('--head_individual', type=int, default=0, help='individual head; True 1 False 0')
 
     # GPU
     parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')

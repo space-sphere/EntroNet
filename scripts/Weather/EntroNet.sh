@@ -34,5 +34,5 @@ do
         --train_epochs 30 \
         --learning_rate 0.0005 \
         --patience 5 \
-        --itr 1 > res/longforecasting/$model_name'_weather_'$pred_len'_512df'.log
+        --itr 1 > res/longforecasting/$model_name'_weather_'$pred_len'pl'.log
 done
