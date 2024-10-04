@@ -27,7 +27,7 @@ class Exp_Main(Exp_Basic):
         model_dict = {
             'Autoformer': Autoformer,
             'Transformer': Transformer,
-            'Entropy': EntroNet,
+            'EntroNet': EntroNet,
             'Informer': Informer,
             'DLinear': DLinear,
             'NLinear': NLinear,
@@ -83,7 +83,7 @@ class Exp_Main(Exp_Basic):
                             else:
                                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
-                    if 'Linear' in self.args.model or 'TST' in self.args.model or 'Entropy' in self.args.model:
+                    if 'Linear' in self.args.model or 'TST' in self.args.model or 'Entro' in self.args.model:
                         outputs = self.model(batch_x)
                     else:
                         if self.args.output_attention:
@@ -124,12 +124,13 @@ class Exp_Main(Exp_Basic):
 
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
-            
-        scheduler = lr_scheduler.OneCycleLR(optimizer = model_optim,
-                                            steps_per_epoch = train_steps,
-                                            pct_start = self.args.pct_start,
-                                            epochs = self.args.train_epochs,
-                                            max_lr = self.args.learning_rate)
+        
+        if self.args.lradj == 'TST':
+            scheduler = lr_scheduler.OneCycleLR(optimizer = model_optim,
+                                                steps_per_epoch = train_steps,
+                                                pct_start = self.args.pct_start,
+                                                epochs = self.args.train_epochs,
+                                                max_lr = self.args.learning_rate)
 
         for epoch in range(self.args.train_epochs):
             iter_count = 0
@@ -223,7 +224,7 @@ class Exp_Main(Exp_Basic):
                 break
 
             if self.args.lradj != 'TST':
-                adjust_learning_rate(model_optim, scheduler, epoch + 1, self.args)
+                adjust_learning_rate(model_optim, None, epoch + 1, self.args)
             else:
                 print('Updating learning rate to {}'.format(scheduler.get_last_lr()[0]))
 
@@ -237,7 +238,7 @@ class Exp_Main(Exp_Basic):
         
         if test:
             print('loading model')
-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth'), map_location='cuda:0'))
 
         preds = []
         trues = []
@@ -269,7 +270,7 @@ class Exp_Main(Exp_Basic):
                             else:
                                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
-                    if 'Linear' in self.args.model or 'TST' in self.args.model or 'Entropy' in self.args.model:
+                    if 'Linear' in self.args.model or 'TST' in self.args.model or 'Entro' in self.args.model:
                             outputs = self.model(batch_x)
                     else:
                         if self.args.output_attention:
@@ -352,7 +353,7 @@ class Exp_Main(Exp_Basic):
                 # encoder - decoder
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args.model or 'TST' in self.args.model:
+                        if 'Linear' in self.args.model or 'TST' in self.args.model or 'Entro' in self.args.model:
                             outputs = self.model(batch_x)
                         else:
                             if self.args.output_attention:
@@ -360,7 +361,7 @@ class Exp_Main(Exp_Basic):
                             else:
                                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
-                    if 'Linear' in self.args.model or 'TST' in self.args.model:
+                    if 'Linear' in self.args.model or 'TST' in self.args.model or 'Entro' in self.args.model:
                         outputs = self.model(batch_x)
                     else:
                         if self.args.output_attention:

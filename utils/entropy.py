@@ -164,11 +164,9 @@ def entro(queries, keys, eps=0, lag=1, model_order=1, fast=False):
     H_YYt = torch_det(cov_YYt.reshape(-1, (model_order + 1) *d, (model_order + 1) * d)).reshape(batch_size, feature_num, 1)
     H_YYtXt = torch_det(cov_YYtXt.reshape(-1, 2 * d * model_order + d, 2 * d * model_order + d)).reshape(batch_size, feature_num, feature_num_k)
     H_Yt = torch_det(cov_Yt.reshape(-1, model_order * d, model_order * d)).reshape(batch_size, feature_num, 1)
-        
-    # pte = 0.5 * torch.log((H_XtYt * H_YYt + eps) / (H_YYtXt * H_Yt + eps) + eps)
-    # pte = 0.5 * (torch.log(H_XtYt / (H_YYtXt + eps) + eps) + torch.log(H_YYt / (H_Yt + eps) + eps))
+    
     pte = 0.5 * (torch.log(H_XtYt / (H_YYtXt + eps) + 1) - torch.log(H_Yt / (H_YYt + eps) + 1))
-    # pte = torch.where(torch.isnan(pte), torch.zeros_like(pte), pte)
+    # pte = 0.5 * (torch.log(H_XtYt / H_YYtXt) - torch.log(H_Yt / H_YYt))
     
     return pte  # [b, y, x] Tx->y
 
@@ -194,7 +192,7 @@ def attention(queries, keys, fast=False):
     queries, keys = queries.reshape(batch_size, feature_num, -1), keys.reshape(bk, feature_num_k, -1)
 
     keys = keys.permute(0, 2, 1)                                                                    # [bs, t, nvars]
-    attention = torch.matmul(queries, keys)                                                         # [bs, nvars, nvars]
+    attention = torch.matmul(queries, keys) / np.sqrt(T * d)                                                 # [bs, nvars, nvars]
 
     return attention
 

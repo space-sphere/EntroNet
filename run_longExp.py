@@ -14,7 +14,7 @@ if __name__ == '__main__':
     # basic config
     parser.add_argument('--is_training', type=int, required=False, default=1, help='status')
     parser.add_argument('--model_id', type=str, required=False, default='test', help='model id')
-    parser.add_argument('--model', type=str, required=False, default='Entropy',
+    parser.add_argument('--model', type=str, required=False, default='EntroNet',
                         help='model name, options: [Autoformer, Informer, Transformer]')
 
     # data loader
@@ -180,7 +180,7 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
     else:
         ii = 0
-        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_df{}_dm{}_pa{}_{}'.format(
+        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_df{}_dm{}_fa{}_pa{}_en{}_{}'.format(
                 args.model_id,
                 args.model,
                 args.data,
@@ -193,11 +193,13 @@ if __name__ == '__main__':
                 args.e_layers,
                 args.d_ff,
                 args.d_mutual,
+                args.fast, 
                 args.patch_len,
                 # args.factor,
                 # args.embed,
                 # args.distil,
                 # args.des,
+                args.use_entropy,
                 ii)
 
         exp = Exp(args)  # set experiments

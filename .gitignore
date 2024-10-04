@@ -39,10 +39,14 @@ res
 
 *.ipynb
 
-scripts/*
-
 nohup.*
 
-*.sh
-
 *.log
+
+*.json
+
+.vscode
+
+scripts/Exchange
+
+scripts/util

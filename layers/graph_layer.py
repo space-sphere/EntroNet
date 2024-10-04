@@ -29,6 +29,7 @@ class Gin(nn.Module):
                 self.gnns.append(gin)
             
         self.dropout_entropy = nn.Dropout(dropout)
+        self.output_linear = nn.Linear(patch_num * d_forward, patch_num * d_forward)
     
     def forward(self, z, adjacency_matrix):  # [bs, nvars, patch_num, d_forward]
         bs, nvars, patch_num, d_forward = z.shape
@@ -45,10 +46,11 @@ class Gin(nn.Module):
                 u = self.gnns[var](u)
                 out.append(u)
             out = torch.stack(out, dim=2)
-        out = torch.matmul(self.dropout_entropy(adjacency_matrix), out)                         # [bs, n_heads, nvars, p * d / h]
+        out = torch.matmul(adjacency_matrix, out)                         # [bs, n_heads, nvars, p * d / h]
 
         out = out.view(bs, self.n_heads, nvars, patch_num, -1)
-        out = out.permute(0, 2, 3, 1, 4).reshape(bs, nvars, patch_num, -1)                      # [bs, nvars, patch_num, d_forward]
+        out = out.permute(0, 2, 3, 1, 4).reshape(bs, nvars, -1)                      # [bs, nvars, patch_num, d_forward]
+        out = self.output_linear(out).view(bs, nvars, patch_num, -1)
 
         return out
 
@@ -83,6 +85,7 @@ class TwodMixer(nn.Module):
                 self.cross_time.append(cross_time)
         
         self.dropout_entropy = nn.Dropout(dropout)
+        self.output_linear = nn.Linear(d_forward, d_forward)
     
     def forward(self, z, adjacency_matrix):                                                                 # [bs, nvars, patch_num, d_forward]
         bs, nvars, patch_num, d_forward = z.shape
@@ -100,9 +103,10 @@ class TwodMixer(nn.Module):
                 out.append(u)
             out = torch.stack(out, dim=2)                                                                   # [bs, n_heads, nvars, d / h, patch_num]
         out = out.permute(0, 1, 2, 4, 3)                                                                    # [bs, n_heads, nvars, patch_num, d / h]
-        out = torch.matmul(self.dropout_entropy(adjacency_matrix), out.reshape(bs, self.n_heads, nvars, -1))# [bs, n_heads, nvars, p * d / h]
+        out = torch.matmul(adjacency_matrix, out.reshape(bs, self.n_heads, nvars, -1))                      # [bs, n_heads, nvars, p * d / h]
         
         out = out.view(bs, self.n_heads, nvars, patch_num, d_forward // self.n_heads)
         out = out.permute(0, 2, 3, 1, 4).reshape(bs, nvars, patch_num, -1)                                  # [bs, nvars, patch_num, d_forward]
+        out = self.output_linear(out)
 
         return out

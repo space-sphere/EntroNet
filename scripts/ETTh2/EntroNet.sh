@@ -19,7 +19,7 @@ python3 -u run_longExp.py \
     --seq_len 96 \
     --label_len 48 \
     --pred_len 96 \
-    --e_layers 2 \
+    --e_layers 1 \
     --d_layers 1 \
     --des 'Exp' \
     --d_model 128 \
@@ -43,7 +43,7 @@ python3 -u run_longExp.py \
     --seq_len 96 \
     --label_len 48 \
     --pred_len 192 \
-    --e_layers 2 \
+    --e_layers 1 \
     --d_layers 1 \
     --des 'Exp' \
     --d_model 128 \
@@ -67,7 +67,7 @@ python3 -u run_longExp.py \
     --seq_len 96 \
     --label_len 48 \
     --pred_len 336 \
-    --e_layers 2 \
+    --e_layers 1 \
     --d_layers 1 \
     --des 'Exp' \
     --d_model 128 \
@@ -91,7 +91,7 @@ python3 -u run_longExp.py \
     --seq_len 96 \
     --label_len 48 \
     --pred_len 720 \
-    --e_layers 2 \
+    --e_layers 1 \
     --d_layers 1 \
     --des 'Exp' \
     --d_model 128 \
